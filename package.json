@@ -8,7 +8,7 @@
     "lint": "npm run lint:sol",
     "lint:sol": "solhint \"contracts/**/*.sol\"",
     "build": "truffle build",
-    "test": "truffle test",
+    "test": "truffle test --stacktrace",
     "truffle": "truffle",
     "flatten": "rm -rf contracts/Flattened.sol && truffle-flattener contracts/sfc/SFC.sol >> contracts/Flattened.sol"
   },

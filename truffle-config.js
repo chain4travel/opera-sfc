@@ -42,8 +42,11 @@ module.exports = {
         // tab if you use this network and you must also set the `host`, `port` and `network_id`
         // options below to some value.
         //
-        // development: {
-        // },
+        //development: {
+        //    host: '127.0.0.1',
+        //    port: 8545,
+        //    network_id: 1337
+        //},
         coverage: {
             host: '127.0.0.1',
             port: 8555,

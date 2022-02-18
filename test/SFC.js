@@ -118,6 +118,33 @@ class BlockchainNode {
 
 const pubkey = '0x00a2941866e485442aa6b17d67d77f8a6c4580bb556894cc1618473eff1e18203d8cce50b563cf4c75e408886079b8f067069442ed52e2ac9e556baa3f8fcc525f';
 
+takeSnapshot = () => {
+  return new Promise((resolve, reject) => {
+    web3.currentProvider.send({
+      jsonrpc: '2.0',
+      method: 'evm_snapshot',
+      id: new Date().getTime()
+    }, (err, snapshotId) => {
+      if (err) { return reject(err) }
+      return resolve(snapshotId)
+    })
+  })
+}
+
+revertToSnapshot = (id) => {
+  return new Promise((resolve, reject) => {
+    web3.currentProvider.send({
+      jsonrpc: '2.0',
+      method: 'evm_revert',
+      params: [id],
+      id: new Date().getTime()
+    }, (err, result) => {
+      if (err) { console.log("err!!!!", err); return reject(err) }
+      return resolve(result)
+    })
+  })
+}
+
 /*
 contract('SFC', async (accounts) => {
     let legacySfcWrapper;
@@ -333,14 +360,24 @@ contract('SFC', async (accounts) => {
 
 contract('SFC', async ([account1, account2]) => {
     let nodeIRaw;
-    beforeEach(async () => {
+    let snapshotId;
+    before('Deploy...', async () => {
         this.sfc = await UnitTestSFC.new();
         nodeIRaw = await NodeDriver.new();
         const evmWriter = await StubEvmWriter.new();
         this.nodeI = await NodeDriverAuth.new();
         const initializer = await NetworkInitializer.new();
         await initializer.initializeAll(12, 0, this.sfc.address, this.nodeI.address, nodeIRaw.address, evmWriter.address, account1);
+	const snapshot = await takeSnapshot();
+        snapshotId = snapshot['result'];
     });
+
+    afterEach(async () => {
+        await revertToSnapshot(snapshotId);
+        const snapshot = await takeSnapshot();
+        snapshotId = snapshot['result'];
+    })
+
 
     describe('Nde', () => {
         it('Should migrate to New address', async () => {
@@ -434,7 +471,9 @@ contract('SFC', async ([account1, account2]) => {
 });
 
 contract('SFC', async ([firstValidator, secondValidator, thirdValidator]) => {
-    beforeEach(async () => {
+
+    let snapshotId;
+    before('Deploy', async () => {
         this.sfc = await UnitTestSFC.new();
         const nodeIRaw = await NodeDriver.new();
         const evmWriter = await StubEvmWriter.new();
@@ -443,7 +482,16 @@ contract('SFC', async ([firstValidator, secondValidator, thirdValidator]) => {
         await initializer.initializeAll(0, 0, this.sfc.address, this.nodeI.address, nodeIRaw.address, evmWriter.address, firstValidator);
         await this.sfc.rebaseTime();
         this.node = new BlockchainNode(this.sfc, firstValidator);
+        const snapshot = await takeSnapshot();
+        snapshotId = snapshot['result'];
     });
+
+    afterEach(async () => {
+        await revertToSnapshot(snapshotId);
+        const snapshot = await takeSnapshot();
+        snapshotId = snapshot['result'];
+    })
+
 
     describe('Basic functions', () => {
         describe('Constants', () => {
@@ -546,7 +594,7 @@ contract('SFC', async ([firstValidator, secondValidator, thirdValidator]) => {
                 await expect(this.sfc.createValidator(pubkey, {
                     from: secondValidator,
                     value: amount18('0.3'),
-                })).to.be.rejectedWith('Returned error: VM Exception while processing transaction: revert insufficient self-stake -- Reason given: insufficient self-stake.');
+                })).to.be.rejectedWith('Error: Revert (message: insufficient self-stake)');
             });
 
             it('Returns current Epoch', async () => {
@@ -618,7 +666,8 @@ contract('SFC', async ([firstValidator, secondValidator, thirdValidator]) => {
 });
 
 contract('SFC', async ([firstValidator, secondValidator, thirdValidator, firstDelegator, secondDelegator, thirdDelegator]) => {
-    beforeEach(async () => {
+    let snapshotId;
+    before('Depoy', async () => {
         this.sfc = await UnitTestSFC.new();
         const nodeIRaw = await NodeDriver.new();
         const evmWriter = await StubEvmWriter.new();
@@ -627,7 +676,15 @@ contract('SFC', async ([firstValidator, secondValidator, thirdValidator, firstDe
         await initializer.initializeAll(10, 0, this.sfc.address, this.nodeI.address, nodeIRaw.address, evmWriter.address, firstValidator);
         await this.sfc.rebaseTime();
         this.node = new BlockchainNode(this.sfc, firstValidator);
+        const snapshot = await takeSnapshot();
+        snapshotId = snapshot['result'];
     });
+
+    afterEach(async () => {
+        await revertToSnapshot(snapshotId);
+        const snapshot = await takeSnapshot();
+        snapshotId = snapshot['result'];
+    })
 
     describe('Prevent Genesis Call if not node', () => {
         it('Should not be possible add a Genesis Validator if called not by node', async () => {
@@ -676,10 +733,11 @@ contract('SFC', async ([firstValidator, secondValidator, thirdValidator, firstDe
         });
 
         it('Should not be able to stake if Validator not created yet', async () => {
+            const err = 'Error: Revert (message: validator doesn\'t exist)';
             await expect(this.sfc.delegate(1, {
                 from: firstDelegator,
                 value: amount18('10'),
-            })).to.be.rejectedWith('Returned error: VM Exception while processing transaction: revert validator doesn\'t exist -- Reason given: validator doesn\'t exist');
+            })).to.be.rejectedWith(err);
             await expect(this.sfc.createValidator(pubkey, {
                 from: firstValidator,
                 value: amount18('10'),
@@ -688,7 +746,7 @@ contract('SFC', async ([firstValidator, secondValidator, thirdValidator, firstDe
             await expect(this.sfc.delegate(2, {
                 from: secondDelegator,
                 value: amount18('10'),
-            })).to.be.rejectedWith('Returned error: VM Exception while processing transaction: revert validator doesn\'t exist -- Reason given: validator doesn\'t exist');
+            })).to.be.rejectedWith(err);
             await expect(this.sfc.createValidator(pubkey, {
                 from: secondValidator,
                 value: amount18('15'),
@@ -697,7 +755,7 @@ contract('SFC', async ([firstValidator, secondValidator, thirdValidator, firstDe
             await expect(this.sfc.delegate(3, {
                 from: thirdDelegator,
                 value: amount18('10'),
-            })).to.be.rejectedWith('Returned error: VM Exception while processing transaction: revert validator doesn\'t exist -- Reason given: validator doesn\'t exist');
+            })).to.be.rejectedWith(err);
             await expect(this.sfc.createValidator(pubkey, {
                 from: thirdValidator,
                 value: amount18('20'),
@@ -785,9 +843,17 @@ contract('SFC', async ([firstValidator, secondValidator, thirdValidator, firstDe
 });
 
 contract('SFC', async ([firstValidator, secondValidator, thirdValidator, firstDelegator, secondDelegator, thirdDelegator]) => {
+
+    let snapshotId;
+    afterEach(async () => {
+        await revertToSnapshot(snapshotId);
+        const snapshot = await takeSnapshot();
+        snapshotId = snapshot['result'];
+    });
+
     describe('Returns Validator', () => {
         let validator;
-        beforeEach(async () => {
+        before('Deploy', async () => {
             this.sfc = await UnitTestSFC.new();
             const nodeIRaw = await NodeDriver.new();
             const evmWriter = await StubEvmWriter.new();
@@ -802,6 +868,9 @@ contract('SFC', async ([firstValidator, secondValidator, thirdValidator, firstDe
             await this.sfc.delegate(1, { from: secondDelegator, value: amount18('8') });
             await this.sfc.delegate(1, { from: thirdDelegator, value: amount18('8') });
             validator = await this.sfc.getValidator(1);
+
+            const snapshot = await takeSnapshot();
+            snapshotId = snapshot['result'];
         });
 
         it('Should returns Validator\' status ', async () => {
@@ -836,7 +905,7 @@ contract('SFC', async ([firstValidator, secondValidator, thirdValidator, firstDe
 
     describe('EpochSnapshot', () => {
         let validator;
-        beforeEach(async () => {
+        before('Deploy', async () => {
             this.sfc = await UnitTestSFC.new();
             const nodeIRaw = await NodeDriver.new();
             const evmWriter = await StubEvmWriter.new();
@@ -851,6 +920,9 @@ contract('SFC', async ([firstValidator, secondValidator, thirdValidator, firstDe
             await this.sfc.delegate(1, { from: secondDelegator, value: amount18('8') });
             await this.sfc.delegate(1, { from: thirdDelegator, value: amount18('8') });
             validator = await this.sfc.getValidator(1);
+
+            const snapshot = await takeSnapshot();
+            snapshotId = snapshot['result'];
         });
 
         it('Returns stashedRewardsUntilEpoch', async () => {
@@ -888,7 +960,7 @@ contract('SFC', async ([firstValidator, secondValidator, thirdValidator, firstDe
         });
     });
     describe('Methods tests', async () => {
-        beforeEach(async () => {
+        before('Deploy', async () => {
             this.sfc = await UnitTestSFC.new();
             const nodeIRaw = await NodeDriver.new();
             const evmWriter = await StubEvmWriter.new();
@@ -898,6 +970,9 @@ contract('SFC', async ([firstValidator, secondValidator, thirdValidator, firstDe
             await this.sfc.rebaseTime();
             await this.sfc.enableNonNodeCalls();
             this.node = new BlockchainNode(this.sfc, firstValidator);
+
+            const snapshot = await takeSnapshot();
+            snapshotId = snapshot['result'];
         });
         it('checking createValidator function', async () => {
             expect(await this.sfc.lastValidatorID.call()).to.be.bignumber.equal(new BN('0'));
@@ -1005,8 +1080,9 @@ contract('SFC', async ([firstValidator, secondValidator, thirdValidator, testVal
     let firstValidatorID;
     let secondValidatorID;
     let thirdValidatorID;
+    let snapshotId;
 
-    beforeEach(async () => {
+    before('Deploy', async () => {
         this.sfc = await UnitTestSFC.new();
         const nodeIRaw = await NodeDriver.new();
         const evmWriter = await StubEvmWriter.new();
@@ -1048,6 +1124,15 @@ contract('SFC', async ([firstValidator, secondValidator, thirdValidator, testVal
         });
 
         await sealEpoch(this.sfc, (new BN(0)).toString());
+
+        const snapshot = await takeSnapshot();
+        snapshotId = snapshot['result'];
+    });
+
+    afterEach(async () => {
+        await revertToSnapshot(snapshotId);
+        const snapshot = await takeSnapshot();
+        snapshotId = snapshot['result'];
     });
 
     describe('Staking / Sealed Epoch functions', () => {
@@ -1564,8 +1649,9 @@ contract('SFC', async ([firstValidator, testValidator, firstDelegator, secondDel
     let testValidator1ID;
     let testValidator2ID;
     let testValidator3ID;
+    let snapshotId;
 
-    beforeEach(async () => {
+    before('Deploy', async () => {
         this.sfc = await UnitTestSFC.new();
         const nodeIRaw = await NodeDriver.new();
         const evmWriter = await StubEvmWriter.new();
@@ -1600,7 +1686,17 @@ contract('SFC', async ([firstValidator, testValidator, firstDelegator, secondDel
             { from: account3 });
 
         await sealEpoch(this.sfc, (new BN(0)).toString());
+
+        const snapshot = await takeSnapshot();
+        snapshotId = snapshot['result'];
     });
+
+    afterEach(async () => {
+        await revertToSnapshot(snapshotId);
+        const snapshot = await takeSnapshot();
+        snapshotId = snapshot['result'];
+    });
+
 
     describe('Test Rewards Calculation', () => {
         it('Calculation of validators rewards should be equal to 30%', async () => {
@@ -1669,8 +1765,9 @@ contract('SFC', async ([firstValidator, testValidator, firstDelegator, secondDel
     let testValidator1ID;
     let testValidator2ID;
     let testValidator3ID;
+    let snapshotId;
 
-    beforeEach(async () => {
+    before('Deploy', async () => {
         this.sfc = await UnitTestSFC.new();
         const nodeIRaw = await NodeDriver.new();
         const evmWriter = await StubEvmWriter.new();
@@ -1707,7 +1804,17 @@ contract('SFC', async ([firstValidator, testValidator, firstDelegator, secondDel
             { from: account3 });
 
         await sealEpoch(this.sfc, (new BN(0)).toString());
+
+        const snapshot = await takeSnapshot();
+        snapshotId = snapshot['result'];
     });
+
+    afterEach(async () => {
+        await revertToSnapshot(snapshotId);
+        const snapshot = await takeSnapshot();
+        snapshotId = snapshot['result'];
+    });
+
 
     describe('Test Calculation Rewards with Lockup', () => {
         it('Should not be able to lock 0 amount', async () => {
@@ -1846,8 +1953,9 @@ contract('SFC', async ([firstValidator, testValidator, firstDelegator, secondDel
     let testValidator1ID;
     let testValidator2ID;
     let testValidator3ID;
+    let snapshotId;
 
-    beforeEach(async () => {
+    before('Deploy', async () => {
         this.sfc = await UnitTestSFC.new();
         const nodeIRaw = await NodeDriver.new();
         const evmWriter = await StubEvmWriter.new();
@@ -1884,7 +1992,17 @@ contract('SFC', async ([firstValidator, testValidator, firstDelegator, secondDel
             { from: account3 });
 
         await sealEpoch(this.sfc, (new BN(0)).toString());
+
+        const snapshot = await takeSnapshot();
+        snapshotId = snapshot['result'];
     });
+
+    afterEach(async () => {
+        await revertToSnapshot(snapshotId);
+        const snapshot = await takeSnapshot();
+        snapshotId = snapshot['result'];
+    });
+
 
     describe('Test Rewards with lockup Calculation', () => {
         it('Should not update slashing refund ratio', async () => {
