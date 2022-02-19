@@ -13,7 +13,7 @@ contract NodeDriverAuth is Initializable, Ownable {
 
     // Initialize NodeDriverAuth, NodeDriver and SFC in one call to allow fewer genesis transactions
     function initialize(address _sfc, address _driver, address _owner) external initializer {
-        Ownable.initialize(_owner);
+        setupOwner(_owner);
         driver = NodeDriver(_driver);
         sfc = SFC(_sfc);
     }

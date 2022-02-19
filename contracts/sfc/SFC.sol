@@ -35,10 +35,10 @@ contract SFC is Initializable, Ownable, StakersConstants, Version {
     mapping(address => uint256) public getValidatorID;
     mapping(uint256 => bytes) public getValidatorPubkey;
 
-    uint256 public lastValidatorID;
-    uint256 public totalStake;
-    uint256 public totalActiveStake;
-    uint256 public totalSlashedStake;
+    uint256 public lastValidatorID = 0;
+    uint256 public totalStake = 0;
+    uint256 public totalActiveStake = 0;
+    uint256 public totalSlashedStake = 0;
 
     struct Rewards {
         uint256 lockupExtraReward;
@@ -91,6 +91,7 @@ contract SFC is Initializable, Ownable, StakersConstants, Version {
         uint256 totalSupply;
     }
 
+    // Set in initialize()
     uint256 public baseRewardPerSecond;
     uint256 public totalSupply;
     mapping(uint256 => EpochSnapshot) public getEpochSnapshot;
@@ -100,7 +101,7 @@ contract SFC is Initializable, Ownable, StakersConstants, Version {
 
     mapping(uint256 => uint256) public slashingRefundRatio; // validator ID -> (slashing refund ratio)
 
-    address public stakeTokenizerAddress;
+    address public stakeTokenizerAddress = address(0);
 
     function isNode(address addr) internal view returns (bool) {
         return addr == address(node);
@@ -179,7 +180,7 @@ contract SFC is Initializable, Ownable, StakersConstants, Version {
     */
 
     function initialize(uint256 sealedEpoch, uint256 _totalSupply, address nodeDriver, address owner) external initializer {
-        Ownable.initialize(owner);
+        setupOwner(owner);
         currentSealedEpoch = sealedEpoch;
         node = NodeDriverAuth(nodeDriver);
         totalSupply = _totalSupply;

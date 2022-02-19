@@ -16,31 +16,32 @@ pragma solidity >=0.4.24 <0.7.0;
 contract Initializable {
 
   /**
-   * @dev Indicates that the contract has been initialized.
-   */
-  bool private initialized;
-
-  /**
    * @dev Indicates that the contract is in the process of being initialized.
    */
-  bool private initializing;
+  uint256 private constant INITIALIZING = 1;
+
+  /**
+   * @dev Indicates that the contract has been initialized.
+   */
+  uint256 private constant INITIALIZED = 2;
+
+  uint256 private state = 0;
 
   /**
    * @dev Modifier to use in the initializer function of a contract.
    */
   modifier initializer() {
-    require(initializing || isConstructor() || !initialized, "Contract instance has already been initialized");
+    require((state & INITIALIZING) != 0|| isConstructor() || (state & INITIALIZED) == 0, "Initializable: already initialized");
 
-    bool isTopLevelCall = !initializing;
+    bool isTopLevelCall = (state & INITIALIZING) == 0;
     if (isTopLevelCall) {
-      initializing = true;
-      initialized = true;
+      state = INITIALIZING | INITIALIZED;
     }
 
     _;
 
     if (isTopLevelCall) {
-      initializing = false;
+      state &= ~INITIALIZING;
     }
   }
 
