@@ -4,7 +4,7 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 import "./StakerConstants.sol";
 import "../ownership/Ownable.sol";
 import "../version/Version.sol";
-import "./NodeDriver.sol";
+import "./interfaces/INodeDriverAuth.sol";
 import "./StakeTokenizer.sol";
 
 /**
@@ -28,12 +28,13 @@ contract SFC is Initializable, Ownable, StakersConstants, Version {
         address auth;
     }
 
-    NodeDriverAuth internal node;
+    INodeDriverAuth internal node;
 
     uint256 public currentSealedEpoch;
     mapping(uint256 => Validator) public getValidator;
     mapping(address => uint256) public getValidatorID;
     mapping(uint256 => bytes) public getValidatorPubkey;
+    mapping(uint256 => string) public getValidatorInfo;
 
     uint256 public lastValidatorID = 0;
     uint256 public totalStake = 0;
@@ -126,6 +127,7 @@ contract SFC is Initializable, Ownable, StakersConstants, Version {
     event UpdatedOfflinePenaltyThreshold(uint256 blocksNum, uint256 period);
     event UpdatedSlashingRefundRatio(uint256 indexed validatorID, uint256 refundRatio);
     event RefundedSlashedLegacyDelegation(address indexed delegator, uint256 indexed validatorID, uint256 amount);
+    event ValidatorInfoUpdated(uint256 validatorID);
 
     /*
     Getters
@@ -182,7 +184,7 @@ contract SFC is Initializable, Ownable, StakersConstants, Version {
     function initialize(uint256 sealedEpoch, uint256 _totalSupply, address nodeDriver, address owner) external initializer {
         setupOwner(owner);
         currentSealedEpoch = sealedEpoch;
-        node = NodeDriverAuth(nodeDriver);
+        node = INodeDriverAuth(nodeDriver);
         totalSupply = _totalSupply;
         baseRewardPerSecond = 6.183414351851851852 * 1e18;
         offlinePenaltyThresholdBlocksNum = 1000;
@@ -220,8 +222,15 @@ contract SFC is Initializable, Ownable, StakersConstants, Version {
     function createValidator(bytes calldata pubkey) external payable {
         require(msg.value >= minSelfStake(), "insufficient self-stake");
         require(pubkey.length > 0, "empty pubkey");
+
         _createValidator(msg.sender, pubkey);
         _delegate(msg.sender, lastValidatorID, msg.value);
+    }
+
+    function syncValidator(uint256 validatorID, bool syncPubkey) external {
+        require(_validatorExists(validatorID), "validator doesn't exist");
+
+        _syncValidator(validatorID, syncPubkey);
     }
 
     function _createValidator(address auth, bytes memory pubkey) internal {
@@ -247,6 +256,24 @@ contract SFC is Initializable, Ownable, StakersConstants, Version {
         if (status != 0) {
             emit ChangedValidatorStatus(validatorID, status);
         }
+
+        // Remove Metadata if required
+        if (bytes(getValidatorInfo[validatorID]).length > 0) {
+            delete(getValidatorInfo[validatorID]);
+            emit ValidatorInfoUpdated(validatorID);
+        }
+    }
+
+    function setValidatorInfo(string calldata _metaDataURI) external {
+        // Retrieve validatorId and verify
+        uint256 validatorID = getValidatorID[msg.sender];
+        require(validatorID > 0, "Caller is not validator");
+
+        // Update state
+        getValidatorInfo[validatorID] = _metaDataURI;
+
+        // Emit event
+        emit ValidatorInfoUpdated(validatorID);
     }
 
     function getSelfStake(uint256 validatorID) public view returns (uint256) {
@@ -320,6 +347,8 @@ contract SFC is Initializable, Ownable, StakersConstants, Version {
     }
 
     function undelegate(uint256 toValidatorID, uint256 wrID, uint256 amount) public {
+        require(_validatorExists(toValidatorID), "validator doesn't exist");
+
         address delegator = msg.sender;
 
         _stashRewards(delegator, toValidatorID);
@@ -389,6 +418,7 @@ contract SFC is Initializable, Ownable, StakersConstants, Version {
 
     function deactivateValidator(uint256 validatorID, uint256 status) external onlyDriver {
         require(status != OK_STATUS, "wrong status");
+        require(_validatorExists(validatorID), "validator doesn't exist");
 
         _setValidatorDeactivated(validatorID, status);
         _syncValidator(validatorID, false);
@@ -576,8 +606,7 @@ contract SFC is Initializable, Ownable, StakersConstants, Version {
     }
 
     // _syncValidator updates the validator data on node
-    function _syncValidator(uint256 validatorID, bool syncPubkey) public {
-        require(_validatorExists(validatorID), "validator doesn't exist");
+    function _syncValidator(uint256 validatorID, bool syncPubkey) internal {
         // emit special log for node
         uint256 weight = getValidator[validatorID].receivedStake;
         if (getValidator[validatorID].status != OK_STATUS) {
